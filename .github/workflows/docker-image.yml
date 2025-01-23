@@ -2,17 +2,20 @@ name: Docker Image CI
 
 on:
   schedule:
-      - cron: '0 0 * * *' 
+    - cron: '0 0 * * *'  # Jalankan setiap hari pada pukul 00:00
   push:
-    branches: [ "main" ]
+    branches:
+      - main  # Jalankan saat ada perubahan di branch "main"
   release:
-    types: [published]
-    
+    types:
+      - published  # Jalankan saat ada rilis yang dipublikasikan
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install cosign
@@ -21,7 +24,7 @@ jobs:
         with:
           cosign-release: 'v2.4.1'
 
-      - name: Set up QEMU
+      - name: Set up QEMU for cross-platform builds
         uses: docker/setup-qemu-action@v3.2.0
 
       - name: Set up Docker Buildx
@@ -39,8 +42,8 @@ jobs:
         uses: docker/metadata-action@v5.5.1
         with:
           images: quay.io/ydrag0n/pterodactyl-vps-egg
-          
-      - name: Build and push
+
+      - name: Build and push Docker image
         id: build-and-push
         uses: docker/build-push-action@v6
         with:
@@ -48,17 +51,19 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64,linux/arm64,linux/riscv64
           push: true
-          tags: quay.io/ydrag0n/pterodactyl-vps-egg:latest,quay.io/ydrag0n/pterodactyl-vps-egg:${{ github.ref_name }}
+          tags: >
+            quay.io/ydrag0n/pterodactyl-vps-egg:latest,
+            quay.io/ydrag0n/pterodactyl-vps-egg:${{ github.ref_name }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name=target
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Sign the published Docker image
         if: ${{ github.event_name != 'pull_request' }}
         env:
-          COSIGN_KEY: ${{secrets.COSIGN_KEY}}
-          COSIGN_PASSWORD: ${{secrets.COSIGN_PASSWORD}}
+          COSIGN_KEY: ${{ secrets.COSIGN_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
           TAGS: ${{ steps.meta.outputs.tags }}
           DIGEST: ${{ steps.build-and-push.outputs.digest }}
-        run: echo "${TAGS}" | xargs -I {} cosign sign --key env://COSIGN_KEY --yes {}@${DIGEST}
+        run: |
+          echo "${{ env.TAGS }}" | xargs -I {} cosign sign --key env://COSIGN_KEY --yes {}@${{ env.DIGEST }}
